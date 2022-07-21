@@ -1,0 +1,5 @@
+-r python.txt
+black
+flake8
+isort
+mypy
