@@ -7,9 +7,8 @@ from typing import Iterator
 from mlflow.tracking import MlflowClient
 from mlflow.deployments import get_deploy_client
 from yarl import URL
-from modules.resources import ModelInfo, TritonServerInfo
 
-from resources import ModelStage
+from modules.resources import ModelInfo, TritonServerInfo, ModelStage
 
 
 class MLFlowConnector:

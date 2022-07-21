@@ -1,14 +1,11 @@
 from __future__ import annotations
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import datetime as dt
-
 from enum import Enum
 from pathlib import Path
-from typing import NamedTuple
-from neuro_sdk import JobDescription, JobStatus
-from traitlets import default
 
+from neuro_sdk import JobDescription
 from yarl import URL
 
 
@@ -68,6 +65,10 @@ class InferenceServerType(Enum):
 class InferenceServerInfo:
     job_description: JobDescription
     type: InferenceServerType
+
+    def __eq__(self, other: object) -> bool:
+        return issubclass(type(other), type(self)) \
+            and self.job_description.id == other.job_description.id
 
     @property
     def job_name(self) -> str:

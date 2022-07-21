@@ -15,12 +15,18 @@ from neuro_sdk import (
     Volume,
     get,
 )
-import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 from yarl import URL
+
 from modules.mlflow_connector import MLFlowConnector
-from modules.resources import DeployedModelInfo
-from resources import ModelStage, InferenceServerType, InferenceServerInfo, ModelInfo, TritonServerInfo
+from modules.resources import (
+    DeployedModelInfo,
+    ModelStage,
+    ModelInfo,
+    InferenceServerInfo,
+    InferenceServerType,
+    TritonServerInfo,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -33,17 +39,16 @@ TRITON_IMAGES = [
 
 
 class InferenceRunner:
-    def __init__(self, mlflow_connector: MLFlowConnector | None = None, id_: int = 0) -> None:
+    def __init__(self, mlflow_connector: MLFlowConnector | None = None) -> None:
         self._client: Client | None = None
         self._mlflow_connector: MLFlowConnector = mlflow_connector
-        self._controller_id: str = id_
 
     def get_server_tags(
         self,
         inference_type: InferenceServerType | None = None,
         model: ModelStage | None = None,
     ) -> list[str]:
-        result = [f"inference-server::{self._controller_id}"]
+        result = [f"in-job-deployments::inference-server"]
         if inference_type:
             result.append(f"server-type::{inference_type.value}")
         if model:
@@ -175,12 +180,15 @@ class InferenceRunner:
             display_container.error("Unable to fetch server config")
         else:
             try:
-                return self._mlflow_connector.deploy_triton(
+                display_container.info(f"Deploying {model.uri}")
+                result = self._mlflow_connector.deploy_triton(
                     model=model,
                     deployment_name=deployment_name,
                     flavor="onnx",
                     triton_server_config=server_config,
-            )
+                )
+                display_container.success(f"Model deployed!")
+                return result
             except Exception as e:
                 display_container.error(f"Unable to deploy model: {e}")
 
@@ -245,8 +253,7 @@ class InferenceRunner:
         port: int = 8000
     ) -> TritonServerInfo | None:
         async with get() as n_client:
-            model_repo_storage = \
-                URL(f'{os.environ["TRITON_MODEL_REPO_STORAGE"]}/{self._controller_id}')
+            model_repo_storage = URL(os.environ["TRITON_MODEL_REPO_STORAGE"])
             model_repo_job = f"{os.environ['TRITON_MODEL_REPO']}/"
             Path(model_repo_job).mkdir(parents=True, exist_ok=True)
             try:
@@ -278,7 +285,7 @@ class InferenceRunner:
                 while job_descr.status.is_pending:
                     job_descr = await n_client.jobs.status(job_descr.id)
                     await asyncio.sleep(0.1)
-                display_container.info(f"Started a job {job_descr.id}")
+                display_container.success(f"Started a job {job_descr.id}")
 
                 server_config = TritonServerInfo(job_descr)
                 return server_config

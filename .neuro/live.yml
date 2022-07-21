@@ -24,15 +24,22 @@ images:
 jobs:
   app:
     image: $[[ images.app.ref ]]
+    browse: true
+    pass_config: true
+    http_port: 8501
     volumes:
-      - ${{ volumes.modules.ref_rw }}
+      - ${{ upload(volumes.modules).ref_rw }}
       - ${{ volumes.triton_model_repo.ref_rw }}
     env:
-      MLFLOW_TRACKING_URI: https://mlops-pytorch-mlflow-trito-mlflow-server--yevheniisemendiak.jobs.green-a4000-1.org.neu.ro
+      MLFLOW_TRACKING_URI: ${{ params.mlflow_uri }}
       MLFLOW_TRACKING_TOKEN: secret:in-job-deployment-auth-token
       TRITON_MODEL_REPO: ${{ volumes.triton_model_repo.mount }}
+      TRITON_MODEL_REPO_STORAGE: ${{ volumes.triton_model_repo.remote }}
+      PYTHONPATH: ${{ volumes.modules.mount }}
+    params:
+      mlflow_uri: https://mlops-pytorch-mlflow-trito-mlflow-server--yevheniisemendiak.jobs.green-hgx-1.org.neu.ro
     bash: |
-      streamlit run ${{ volumes.modules.mount }}/streamlit-app.py
+      python -m streamlit run ${{ volumes.modules.mount }}/streamlit-app.py --server.runOnSave=True
 
   webdav:
     action: gh:neuro-actions/webdav_server@v1.0.0

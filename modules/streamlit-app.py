@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 from neuro_sdk import RemoteImage
 import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 
 from modules.resources import DeployedModelInfo, InferenceServerInfo, ModelStage
-from modules.platform import InferenceServerType, InferenceRunner
+from modules.platform_connector import InferenceServerType, InferenceRunner
 from modules.mlflow_connector import MLFlowConnector
 
 
