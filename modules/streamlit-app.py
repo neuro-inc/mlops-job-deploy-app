@@ -35,7 +35,7 @@ col1, col2, col3, col4, col5 = models_table.columns([5, 5, 3, 10, 20])
 with col1: col1.caption("Model name")
 with col2: col2.caption("Stage")
 with col3: col3.caption("Version")
-with col4: col4.caption("Inference solution")
+with col4: col4.caption("Creation date")
 with col5: col5.caption("Deployment")
 
 def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
@@ -157,7 +157,7 @@ for model in models:
         col3.write("")
     with col4:
         col4.write("")
-        col4.text(f"{model.creation_datetime}")
+        col4.text(f'{model.creation_datetime.strftime("%D %T")}')
         col4.write("")
     with col5:
         deployment_column_entity(model, col5)
