@@ -1,9 +1,6 @@
-How to run this app
-1. Create a service account and store it's tokens in `secret:in-job-deployment-full-token` and `secret:in-job-deployment-auth-token` respectively.
-2. Share the corresponding MLFLow Application instance with the created service account, so the application can use SA's token to fetch and deploy models.
-3. Build application container image:
+1. Build application container image:
     - `neuro-flow build app`
-4. Run application:
+2. Run application:
     - `neuro-flow run app    
 
 TODOs:
