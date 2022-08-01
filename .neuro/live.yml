@@ -2,22 +2,14 @@ kind: live
 title: mlops-mlflow-model-deploy
 
 volumes:
-  modules:
-    remote: storage:${{ project.id }}/modules
-    mount: /project/modules
-    local: modules
   triton_model_repo:
     remote: storage:${{ project.id }}/triton_model_repo
-    mount: /tmp/project/triton_model_repo
+    mount: /tmp/triton_model_repo
 
 images:
   app:
-    ref: $[[ fmt("image:/{}/{}:{}", project.owner, project.id, git.sha) ]]
+    ref: $[[ fmt("image:{}:{}", project.id, git.sha) ]]
     dockerfile: $[[ flow.workspace ]]/Dockerfile
-    context: $[[ flow.workspace ]]/
-  mlflow_server:
-    ref: image:/$[[ project.owner ]]/$[[ flow.project_id ]]/mlflow-server:v2
-    dockerfile: $[[ flow.workspace ]]/mlflow-server.Dockerfile
     context: $[[ flow.workspace ]]/
 
 
@@ -34,9 +26,16 @@ jobs:
       TRITON_MODEL_REPO: ${{ volumes.triton_model_repo.mount }}
       TRITON_MODEL_REPO_STORAGE: ${{ volumes.triton_model_repo.remote }}
     params:
-      mlflow_uri: https://mlops-pytorch-mlflow-trito-mlflow-server--yevheniisemendiak.jobs.green-hgx-1.org.neu.ro
+      mlflow_uri:
+        default:
+        descr: |
+          MLFlow server URI running on the platform to connect to.
+          The server should be running with `--serve-artifacts` option enabled
 
   webdav:
+    # used for local development.
+    # run this job and perform
+    # mount_webdav <job-uri> /tmp/triton_model_repo
     action: gh:neuro-actions/webdav_server@v1.0.0
     args:
       volume_remote: ${{ volumes.triton_model_repo.remote }}

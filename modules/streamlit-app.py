@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from neuro_sdk import RemoteImage
 import streamlit as st
+from neuro_sdk import RemoteImage
 from streamlit.delta_generator import DeltaGenerator
 
-from modules.resources import DeployedModelInfo, InferenceServerInfo, ModelStage
-from modules.platform_connector import InferenceServerType, InferenceRunner
 from modules.mlflow_connector import MLFlowConnector
+from modules.platform_connector import InferenceRunner, InferenceServerType
+from modules.resources import DeployedModelInfo, InferenceServerInfo, ModelStage
+from modules.version import __version__ as app_ver
 
 
 # general configuration
@@ -17,7 +18,11 @@ st.set_page_config(
     menu_items={
         "Get Help": "https://docs.neu.ro/",
         "Report a bug": "https://github.com/neuro-inc/neuro-cli/issues/new/choose",
-    }
+        "About": (
+            "[Application](https://github.com/neuro-inc/mlops-job-deploy-app) "
+            f"version: {app_ver}."
+        ),
+    },
 )
 st.header("In-job model deployments")
 
@@ -32,11 +37,17 @@ models_table = st.container()
 models_table.subheader("MLFlow registry")
 models = mlflow_conn.get_registered_models()
 col1, col2, col3, col4, col5 = models_table.columns([5, 5, 3, 10, 20])
-with col1: col1.caption("Model name")
-with col2: col2.caption("Stage")
-with col3: col3.caption("Version")
-with col4: col4.caption("Creation date")
-with col5: col5.caption("Deployment")
+with col1:
+    col1.caption("Model name")
+with col2:
+    col2.caption("Stage")
+with col3:
+    col3.caption("Version")
+with col4:
+    col4.caption("Creation date")
+with col5:
+    col5.caption("Deployment")
+
 
 def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
     expander: DeltaGenerator = column.expander("Create new deployment")
@@ -45,30 +56,55 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
         "Deployment name",
         value=f"{model.name}-{model.stage}".lower().replace("/", "-").replace("_", "-"),
         max_chars=40,
-        key=model,
+        key=str(model),
         help=(
             "Deployment name will be embedded to the resulting model URL. \n"
-            "The name can only contain lowercase letters, numbers and hyphens with the following rules:\n"
+            "The name can only contain lowercase letters, numbers"
+            " and hyphens with the following rules:\n"
             "  - the first character must be a letter;\n"
             "  - each hyphen must be surrounded by non-hyphen characters; \n"
             "  - total length must be between 3 and 40 characters long. \n"
         ),
     )
-    server_type = InferenceServerType(expander.selectbox("Server type", options=[x.value for x in InferenceServerType], key=model))
-    
+    server_type = InferenceServerType(
+        expander.selectbox(
+            "Server type",
+            options=[x.value for x in InferenceServerType],
+            key=str(model),
+        )
+    )
+    preset_name: str | None = None
+    enable_auth: bool | None = None
+    image_with_tag: RemoteImage | None = None
+
     if server_type == InferenceServerType.MLFLOW:
-        preset_name = expander.selectbox("Preset", options=inf_runner.run_coroutine(inf_runner.list_preset_names()), key=model)
-        platform_image = expander.selectbox("Image name", options=inf_runner.run_coroutine(inf_runner.list_images()), key=model)
+        preset_name = expander.selectbox(
+            "Preset",
+            options=inf_runner.run_coroutine(inf_runner.list_preset_names()),
+            key=str(model),
+        )
+        platform_image = expander.selectbox(
+            "Image name",
+            options=inf_runner.run_coroutine(inf_runner.list_images()),
+            key=str(model),
+        )
         image_with_tag = expander.selectbox(
             "Image tag",
-            options=inf_runner.run_coroutine(inf_runner.list_image_tags(platform_image)),
-            key=model,
+            options=inf_runner.run_coroutine(
+                inf_runner.list_image_tags(platform_image)
+            ),
+            key=str(model),
             format_func=lambda x: x.tag,
         )
-        enable_auth = expander.radio("Force platform Auth", options=[True, False], horizontal=True, key=model)
+        enable_auth = expander.radio(
+            "Force platform Auth",
+            options=[True, False],
+            horizontal=True,
+            key=str(model),
+        )
         expander.button(
             "Deploy",
-            key=model,
+            key=str(model),
             on_click=inf_runner.deploy_mlflow,
             kwargs={
                 "model": model,
@@ -81,25 +117,38 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
         )
 
     elif server_type == InferenceServerType.TRITON:
-        create_server = expander.radio("Create new server instance", options=[False, True], horizontal=True)
+        create_server = expander.radio(
+            "Create new server instance", options=[False, True], horizontal=True
+        )
         server_name: str | None = None
-        preset_name: str | None = None
-        image_with_tag: RemoteImage | None = None
-        enable_auth: bool | None = None
         existing_server_info: InferenceServerInfo | None = None
         triton_servers: list[InferenceServerInfo]
 
         if create_server:
-            server_name = expander.text_input("New server name", value="triton", max_chars=40)
-            preset_name = expander.selectbox("Preset", options=inf_runner.run_coroutine(inf_runner.list_preset_names()), key=model)
-            image_with_tag = expander.selectbox("Image name", options=inf_runner.list_triton_images())
-            enable_auth = expander.radio("Force platform Auth", options=[True, False], key=model)
+            server_name = expander.text_input(
+                "New server name", value="triton", max_chars=40
+            )
+            preset_name = expander.selectbox(
+                "Preset",
+                options=inf_runner.run_coroutine(inf_runner.list_preset_names()),
+                key=str(model),
+            )
+            image_with_tag = expander.selectbox(
+                "Image name", options=inf_runner.list_triton_images()
+            )
+            enable_auth = expander.radio(
+                "Force platform Auth", options=[True, False], key=str(model)
+            )
         else:
-            triton_servers = [x for x in inf_runner.list_active_inference_servers() if x.type == InferenceServerType.TRITON]
+            triton_servers = [
+                x
+                for x in inf_runner.list_active_inference_servers()
+                if x.type == InferenceServerType.TRITON
+            ]
             existing_server_info = expander.selectbox(
                 "Select existing server",
                 options=triton_servers,
-                format_func=lambda x: f"{x.job_name}:{x.job_id}"
+                format_func=lambda x: f"{x.job_name}:{x.job_id}",
             )
 
         # done with config, validating and allowing to deploy
@@ -108,7 +157,7 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
                 # deploying to the new triton server
                 all(
                     (
-                        create_server == True,
+                        create_server is True,
                         preset_name,
                         enable_auth is not None,
                         image_with_tag,
@@ -117,16 +166,16 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
                 # deploying to existing server
                 all(
                     (
-                        create_server == False,
-                        existing_server_info != None,
+                        create_server is False,
+                        existing_server_info is not None,
                     )
-                )
+                ),
             )
         )
 
         expander.button(
             "Deploy",
-            key=model,
+            key=str(model),
             on_click=inf_runner.deploy_triton,
             kwargs={
                 "display_container": expander,
@@ -142,9 +191,12 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
             disabled=not input_is_valid,
         )
 
+
 for model in models:
     with col1:
-        col1.write("") # https://github.com/streamlit/streamlit/issues/3052#issuecomment-1083620133
+        col1.write(
+            ""
+        )  # https://github.com/streamlit/streamlit/issues/3052#issuecomment-1083620133
         col1.write(f"[{model.name}]({model.link})")
         col1.write("")
     with col2:
@@ -165,30 +217,27 @@ for model in models:
 # Deployments information
 deployments_info = st.container()
 deployments_info.subheader("Deployments information")
-tab_names = [
-    "Deployed models",
-    "Inference servers"
-]
+tab_names = ["Deployed models", "Inference servers"]
 models_tab, servers_tab = deployments_info.tabs(tab_names)
 
-## Models tab
+# Models tab
 deployed_models = inf_runner.list_all_deployed_models()
 model_column_names = DeployedModelInfo.get_md_columns_width().keys()
 model_column_widths = DeployedModelInfo.get_md_columns_width().values()
-model_columns: list[DeltaGenerator] = models_tab.columns(model_column_widths)
+model_columns: list[DeltaGenerator] = models_tab.columns(list(model_column_widths))
 
 for column_name, column in zip(model_column_names, model_columns):
     column.caption(column_name)
-for model in deployed_models:
-    model_repr = model.get_md_repr()
+for deployed_model in deployed_models:
+    model_repr = deployed_model.get_md_repr()
     for column_name, column in zip(model_column_names, model_columns):
         column.write(model_repr[column_name])
 
-## Servers tab
+# Servers tab
 active_servers = inf_runner.list_active_inference_servers()
 server_column_names = InferenceServerInfo.get_md_columns_width().keys()
 server_column_widths = list(InferenceServerInfo.get_md_columns_width().values())
-server_column_widths += [3] # kill button
+server_column_widths += [3]  # kill button
 server_columns: list[DeltaGenerator] = servers_tab.columns(server_column_widths)
 
 for column_name, column in zip(server_column_names, server_columns):
@@ -201,7 +250,7 @@ for server in active_servers:
         column.write(server_repr[column_name])
     server_columns[-1].button(
         "Terminate",
-        key=server,
+        key=str(server),
         on_click=inf_runner.kill_server,
-        args=[server],
+        args=(server,),
     )

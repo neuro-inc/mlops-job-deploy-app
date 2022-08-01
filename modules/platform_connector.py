@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 import asyncio
 import logging
 import os
-from typing import Any, Awaitable
 from pathlib import Path
+from typing import Any, Awaitable
 
 from neuro_sdk import (
     Client,
@@ -21,10 +22,10 @@ from yarl import URL
 from modules.mlflow_connector import MLFlowConnector
 from modules.resources import (
     DeployedModelInfo,
-    ModelStage,
-    ModelInfo,
     InferenceServerInfo,
     InferenceServerType,
+    ModelInfo,
+    ModelStage,
     TritonServerInfo,
 )
 
@@ -35,13 +36,13 @@ TRITON_IMAGES = [
     RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.12-py3"),
     RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.11-py3"),
     RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.10-py3"),
-] # TODO: we should know which driver versions are installed within the cluster
+]  # TODO: we should know which driver versions are installed within the cluster
 
 
 class InferenceRunner:
-    def __init__(self, mlflow_connector: MLFlowConnector | None = None) -> None:
+    def __init__(self, mlflow_connector: MLFlowConnector) -> None:
         self._client: Client | None = None
-        self._mlflow_connector: MLFlowConnector = mlflow_connector
+        self._mlflow_connector = mlflow_connector
 
     def get_server_tags(
         self,
@@ -74,8 +75,8 @@ class InferenceRunner:
 
         for tag in server_info.job_tags:
             if "model-info::" in tag:
-                _, model_info = tag.split("::")
-                name, stage, version = model_info.split(":")
+                _, model_info_tag = tag.split("::")
+                name, stage, version = model_info_tag.split(":")
                 model_info = ModelInfo(
                     name=name,
                     stage=stage,
@@ -86,7 +87,7 @@ class InferenceRunner:
                     inference_server_info=InferenceServerInfo(
                         job_description=server_info.job_description,
                         type=InferenceServerType.MLFLOW,
-                    )
+                    ),
                 )
         raise ValueError(f"Model info not found in job {server_info.job_id}")
 
@@ -99,8 +100,8 @@ class InferenceRunner:
 
         model_infos = self._mlflow_connector.list_triton_deployments(server_config)
         result = [
-            DeployedModelInfo(model_info, server_info)
-            for model_info in model_infos]
+            DeployedModelInfo(model_info, server_info) for model_info in model_infos
+        ]
 
         return result
 
@@ -142,11 +143,11 @@ class InferenceRunner:
     def list_triton_images(self) -> list[RemoteImage]:
         return TRITON_IMAGES
 
-    async def list_image_tags(self, platform_image: str) -> list[str]:
+    async def list_image_tags(self, platform_image: RemoteImage) -> list[RemoteImage]:
         async with get() as n_client:
             return list(await n_client.images.tags(platform_image))
-    
-    def deploy_mlflow(self, *args, **kwargs) -> None:
+
+    def deploy_mlflow(self, *args, **kwargs) -> None:  # type: ignore
         return self.run_coroutine(self._deploy_mlflow(*args, **kwargs))
 
     def deploy_triton(
@@ -163,6 +164,10 @@ class InferenceRunner:
     ) -> None:
 
         if create_server:
+            assert server_name
+            assert preset_name
+            assert image_with_tag
+            assert isinstance(enable_auth, bool)
             display_container.info("Starting Triton server")
             server_config = self.run_coroutine(
                 self._deploy_triton_server(
@@ -174,6 +179,7 @@ class InferenceRunner:
                 )
             )
         else:
+            assert existing_server_info
             server_config = TritonServerInfo(existing_server_info.job_description)
 
         if not server_config:
@@ -181,14 +187,13 @@ class InferenceRunner:
         else:
             try:
                 display_container.info(f"Deploying {model.uri}")
-                result = self._mlflow_connector.deploy_triton(
+                self._mlflow_connector.deploy_triton(
                     model=model,
                     deployment_name=deployment_name,
                     flavor="onnx",
                     triton_server_config=server_config,
                 )
                 display_container.success(f"Model deployed!")
-                return result
             except Exception as e:
                 display_container.error(f"Unable to deploy model: {e}")
 
@@ -212,17 +217,17 @@ class InferenceRunner:
                     shm=True,
                     name=deployment_name,
                     secret_env={
-                        #TODO: we should generate
+                        # TODO: we should generate
                         #  a dedicated access token via service accounts
                         "MLFLOW_TRACKING_TOKEN": URL(
                             "secret:in-job-deployment-auth-token"
-                        ), 
+                        ),
                     },
                     env={
                         "MLFLOW_TRACKING_URI": str(model.link.with_path("")),
                     },
                     command=(
-                        '/bin/bash -c '
+                        "/bin/bash -c "
                         '"source /root/.bashrc && '
                         f"mlflow models serve -m models:/{model.name}/{model.stage} "
                         '--host=0.0.0.0 --port=5000"'
@@ -241,8 +246,8 @@ class InferenceRunner:
                     job_descr = await n_client.jobs.status(job_descr.id)
                     await asyncio.sleep(0.1)
                 display_container.success(f"Started a job {job_descr.id}")
-                #TODO: monitor API is ready
-    
+                # TODO: monitor API is ready
+
     async def _deploy_triton_server(
         self,
         server_name: str,
@@ -250,7 +255,7 @@ class InferenceRunner:
         image_with_tag: RemoteImage,
         enable_auth: bool,
         display_container: DeltaGenerator,
-        port: int = 8000
+        port: int = 8000,
     ) -> TritonServerInfo | None:
         async with get() as n_client:
             model_repo_storage = URL(os.environ["TRITON_MODEL_REPO_STORAGE"])
@@ -279,7 +284,10 @@ class InferenceRunner:
                     tags=self.get_server_tags(InferenceServerType.TRITON),
                 )
             except IllegalArgumentError as e:
-                display_container.error(f"Server with name {server_name} already exists: {e}")
+                display_container.error(
+                    f"Server with name {server_name} already exists: {e}"
+                )
+                return None
             else:
                 display_container.info(f"Created a job {job_descr.id}")
                 while job_descr.status.is_pending:
@@ -290,15 +298,14 @@ class InferenceRunner:
                 server_config = TritonServerInfo(job_descr)
                 return server_config
 
-    def run_coroutine(self, coro: Awaitable) -> Any:
+    def run_coroutine(self, coro: Awaitable) -> Any:  # type: ignore
         return asyncio.run(coro)
 
     def list_all_deployed_models(self) -> list[DeployedModelInfo]:
         return self.run_coroutine(self.list_deployed_models())
 
     async def list_deployed_models(
-        self,
-        server_types: list[InferenceServerType] | None = None
+        self, server_types: list[InferenceServerType] | None = None
     ) -> list[DeployedModelInfo]:
         result = []
         if not server_types:
@@ -316,7 +323,7 @@ class InferenceRunner:
 
     def kill_server(self, server: InferenceServerInfo) -> None:
         return self.run_coroutine(self._kill_server(server))
-    
+
     async def _kill_server(self, server: InferenceServerInfo) -> None:
         async with get() as n_client:
             await n_client.jobs.kill(server.job_id)

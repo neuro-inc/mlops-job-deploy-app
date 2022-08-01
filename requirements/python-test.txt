@@ -1,5 +1,3 @@
 -r python.txt
-black
-flake8
-isort
-mypy
+mypy==0.961
+pre-commit==2.20.0

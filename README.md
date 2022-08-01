@@ -1,9 +1,18 @@
+# job-deploy-app
+Deploy ML models from MLFlow model registry to Neu.ro platform job without line of code.
+
+Supported inference servers:
+- MLFlow
+- Triton
+
+## Usage
+If you want to run this application by your own, clone this repo and:
 1. Build application container image:
     - `neuro-flow build app`
 2. Run application:
-    - `neuro-flow run app    
+    - `neuro-flow run app`
 
-TODOs:
+## TODOs:
 - Expose proper Triton model endpoint URIs
 - Add ability to remove model deployments
 - Monitor model endpoint health
