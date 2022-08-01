@@ -48,7 +48,7 @@ jobs:
     - name: Save app version
       id: version
       run: |
-        python -c "from modules.version import __version__ as v; print(f'set-output name=version::{v}')"
+        python -c "from modules.version import __version__ as v; print(f'::set-output name=version::{v}')"
 
   deploy:
     name: Deploy on Github container registry
