@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any, Awaitable
+from typing import Any, Coroutine
 
 from neuro_sdk import (
     Client,
@@ -298,7 +298,7 @@ class InferenceRunner:
                 server_config = TritonServerInfo(job_descr)
                 return server_config
 
-    def run_coroutine(self, coro: Awaitable) -> Any:  # type: ignore
+    def run_coroutine(self, coro: Coroutine[Any, Any, Any]) -> Any:
         return asyncio.run(coro)
 
     def list_all_deployed_models(self) -> list[DeployedModelInfo]:
