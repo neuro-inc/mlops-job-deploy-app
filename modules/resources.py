@@ -1,7 +1,8 @@
 from __future__ import annotations
+
+import datetime as dt
 from collections import OrderedDict
 from dataclasses import dataclass
-import datetime as dt
 from enum import Enum
 from pathlib import Path
 
@@ -15,8 +16,8 @@ class ModelStage:
     version: str
     stage: str
     creation_datetime: dt.datetime
-    uri: URL    # models:/<model-name>/<model-stage>
-    link: URL   # https://<mlflow-endpoint>/#/models/<model-name>/versions/<version>
+    uri: URL  # models:/<model-name>/<model-stage>
+    link: URL  # https://<mlflow-endpoint>/#/models/<model-name>/versions/<version>
 
 
 @dataclass
@@ -43,14 +44,23 @@ class DeployedModelInfo:
         result["Endpoint URL"] = 10
         return result
 
-
     def get_md_repr(self) -> dict[str, str]:
         return {
-            "Model Name:Stage:Version": f"{self.model_info.name}:{self.model_info.stage}:{self.model_info.version}",
+            "Model Name:Stage:Version": (
+                f"{self.model_info.name}:"
+                f"{self.model_info.stage}:"
+                f"{self.model_info.version}"
+            ),
             "Server Type": self.inference_server_info.type.value,
-            "Server Job ID": f"[{self.inference_server_info.job_id}](https://app.neu.ro/job-details/{self.inference_server_info.job_id})",
-            "Creation date": self.inference_server_info.creation_date.strftime("%D %T"),
-            "Endpoint URL": f"[{self.inference_server_info.http_url}]({self.inference_server_info.http_url})",
+            "Server Job ID": (
+                f"[{self.inference_server_info.job_id}]"
+                f"(https://app.neu.ro/job-details/{self.inference_server_info.job_id})"
+            ),
+            "Creation date": self.inference_server_info.creation_date_str,
+            "Endpoint URL": (
+                f"[{self.inference_server_info.http_url}]"
+                f"({self.inference_server_info.http_url})"
+            ),
         }
 
 
@@ -67,8 +77,10 @@ class InferenceServerInfo:
     type: InferenceServerType
 
     def __eq__(self, other: object) -> bool:
-        return issubclass(type(other), type(self)) \
-            and self.job_description.id == other.job_description.id
+        return (
+            issubclass(type(other), type(self))
+            and self.job_description.id == other.job_description.id  # type: ignore
+        )
 
     @property
     def job_name(self) -> str:
@@ -76,10 +88,10 @@ class InferenceServerInfo:
 
     @property
     def job_tags(self) -> list[str]:
-        return self.job_description.tags
+        return list(self.job_description.tags)
 
     @property
-    def http_url(self) -> str:
+    def http_url(self) -> URL:
         return self.job_description.http_url
 
     @property
@@ -87,8 +99,11 @@ class InferenceServerInfo:
         return self.job_description.id
 
     @property
-    def creation_date(self) -> dt.datetime:
-        return self.job_description.history.created_at
+    def creation_date_str(self) -> str:
+        if self.job_description.history.created_at:
+            return self.job_description.history.created_at.strftime("%D %T")
+        else:
+            return ""
 
     @staticmethod
     def get_md_columns_width() -> OrderedDict[str, int]:
@@ -102,16 +117,19 @@ class InferenceServerInfo:
         result["Creation date"] = 4
         return result
 
-
     def get_md_repr(self) -> dict[str, str]:
-        return {
-            "Server name": self.job_description.name,
-            "Job ID": f"[{self.job_description.id}](https://app.neu.ro/job-details/{self.job_description.id})",
+        result = {
+            "Server name": self.job_description.name or "",
+            "Job ID": (
+                f"[{self.job_description.id}]"
+                f"(https://app.neu.ro/job-details/{self.job_description.id})"
+            ),
             "Server Type": self.type.value,
-            "Preset": self.job_description.preset_name,
+            "Preset": self.job_description.preset_name or "",
             "Owner": self.job_description.owner,
-            "Creation date": self.job_description.history.created_at.strftime("%D %T"),
+            "Creation date": self.creation_date_str,
         }
+        return result
 
 
 @dataclass
@@ -121,13 +139,17 @@ class TritonServerInfo(InferenceServerInfo):
     @property
     def port(self) -> int:
         # port where triton management API is running
-        return self.job_description.container.http.port
+        return self.job_description.container.http.port  # type: ignore
 
     @property
     def internal_hostname(self) -> str:
         # we might support external HTTP API later, when auth gets supported
-        return self.job_description.internal_hostname_named or \
-            self.job_description.internal_hostname
+        result = (
+            self.job_description.internal_hostname_named
+            or self.job_description.internal_hostname
+        )
+        assert result
+        return result
 
     @property
     def model_repository_path(self) -> Path:
