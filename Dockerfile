@@ -1,4 +1,4 @@
-FROM python:3.8.13-buster
+FROM python:3.10.6-buster
 
 LABEL org.opencontainers.image.source = "https://github.com/neuro-inc/mlops-in-job-deployments"
 
