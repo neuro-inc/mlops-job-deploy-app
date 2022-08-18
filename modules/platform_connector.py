@@ -226,7 +226,7 @@ class InferenceRunner:
                     env={
                         "MLFLOW_TRACKING_URI": str(model.link.with_path("")),
                     },
-                    command=(
+                    entrypoint=(
                         "/bin/bash -c "
                         '"source /root/.bashrc && '
                         f"mlflow models serve -m models:/{model.name}/{model.stage} "
