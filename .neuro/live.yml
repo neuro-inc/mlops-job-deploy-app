@@ -27,7 +27,7 @@ jobs:
       TRITON_MODEL_REPO_STORAGE: ${{ volumes.triton_model_repo.remote }}
     params:
       mlflow_uri:
-        default:
+        default: https://mlflow-ipekplzf--andriikhomiak.jobs.green-hgx-1.org.neu.ro
         descr: |
           MLFlow server URI running on the platform to connect to.
           The server should be running with `--serve-artifacts` option enabled

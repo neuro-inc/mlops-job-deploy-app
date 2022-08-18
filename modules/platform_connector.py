@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any, Coroutine
+from typing import Any, Coroutine, List, Tuple
 
 from neuro_sdk import (
     Client,
@@ -37,6 +37,31 @@ TRITON_IMAGES = [
     RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.11-py3"),
     RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.10-py3"),
 ]  # TODO: we should know which driver versions are installed within the cluster
+
+MLFLOW_IMAGES = [
+    RemoteImage.new_external_image(name="neuro-inc/mlflow", registry="ghcr.io"),
+]
+
+MLFLOW_PREFERRED_IMAGES = [
+    RemoteImage.new_neuro_image(
+        name="base",
+        registry="registry.green-hgx-1.org.neu.ro",
+        owner="andriikhomiak",
+        cluster_name="green-hgx-1",
+        org_name=None,
+    ),
+] + MLFLOW_IMAGES
+
+
+def _sorted_by_mlflow_preference(images: List[RemoteImage]) -> List[RemoteImage]:
+    preference_scores = {str(image): 1 for image in images}
+    for image in MLFLOW_PREFERRED_IMAGES:
+        preference_scores[str(image)] = 0
+
+    def sort_by_priority_and_name_asc(image: RemoteImage) -> Tuple[float, str]:
+        return preference_scores[str(image)], str(image)
+
+    return sorted(images, key=sort_by_priority_and_name_asc)
 
 
 class InferenceRunner:
@@ -138,7 +163,11 @@ class InferenceRunner:
     async def list_images(self) -> list[RemoteImage]:
         async with get() as n_client:
             # return [str(im) for im in await n_client.images.list()]
-            return await n_client.images.list()
+            images = await n_client.images.list()
+            logger.info(f"Images: {images}")
+            prioritized = _sorted_by_mlflow_preference(images=images + MLFLOW_IMAGES)
+            logger.info(f"Prioritized images: {prioritized}")
+            return prioritized
 
     def list_triton_images(self) -> list[RemoteImage]:
         return TRITON_IMAGES
