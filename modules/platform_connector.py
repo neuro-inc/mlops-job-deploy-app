@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any, Coroutine
+from typing import Any, Coroutine, List, Tuple
 
 from neuro_sdk import (
     Client,
@@ -16,6 +16,7 @@ from neuro_sdk import (
     Volume,
     get,
 )
+from neuro_sdk._images import Images
 from streamlit.delta_generator import DeltaGenerator
 from yarl import URL
 
@@ -30,6 +31,21 @@ from modules.resources import (
 )
 
 
+def patch_neuro_sdk_RemoteImage_tags() -> None:
+    old_tags = Images.tags
+
+    async def patched_tags(self: Images, image: RemoteImage) -> List[RemoteImage]:
+        if image.owner:
+            return await old_tags(self, image)
+        else:
+            # TODO: get list of tags via Docker API
+            return [i for i in NON_PLATFORM_IMAGES if i.name == image.name]
+
+    Images.tags = patched_tags  # type: ignore
+
+
+patch_neuro_sdk_RemoteImage_tags()
+
 logger = logging.getLogger(__name__)
 
 TRITON_IMAGES = [
@@ -37,6 +53,40 @@ TRITON_IMAGES = [
     RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.11-py3"),
     RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.10-py3"),
 ]  # TODO: we should know which driver versions are installed within the cluster
+
+MLFLOW_IMAGES = [
+    RemoteImage(name="ghcr.io/neuro-inc/mlflow", tag="v1.28.0"),
+    RemoteImage(name="ghcr.io/neuro-inc/base", tag="v22.8.0-runtime"),
+    RemoteImage(name="ghcr.io/neuro-inc/base", tag="v22.8.0-devel"),
+    RemoteImage(name="ghcr.io/neuro-inc/base", tag="latest-devel"),
+    RemoteImage(name="ghcr.io/neuro-inc/base", tag="latest-runtime"),
+]
+
+NON_PLATFORM_IMAGES = MLFLOW_IMAGES + TRITON_IMAGES
+
+MLFLOW_PREFERRED_IMAGES = [
+    RemoteImage(
+        name="base",
+        registry="registry.green-hgx-1.org.neu.ro",
+        owner="andriikhomiak",
+        cluster_name="green-hgx-1",
+        org_name=None,
+    ),
+] + MLFLOW_IMAGES
+
+
+def _sorted_by_mlflow_preference(images: List[RemoteImage]) -> List[RemoteImage]:
+    """Sort images based on hard-coded preference first and then alphabetically"""
+    preference_scores = {f"{image.registry}:{image.name}": 1 for image in images}
+    for idx, image in enumerate(MLFLOW_PREFERRED_IMAGES):
+        preference_scores[f"{image.registry}:{image.name}"] = (
+            -len(MLFLOW_PREFERRED_IMAGES) + idx
+        )
+
+    def sort_by_priority_and_name_asc(image: RemoteImage) -> Tuple[float, str]:
+        return preference_scores[f"{image.registry}:{image.name}"], str(image)
+
+    return sorted(images, key=sort_by_priority_and_name_asc)
 
 
 class InferenceRunner:
@@ -138,13 +188,23 @@ class InferenceRunner:
     async def list_images(self) -> list[RemoteImage]:
         async with get() as n_client:
             # return [str(im) for im in await n_client.images.list()]
-            return await n_client.images.list()
+            images = await n_client.images.list()
+            tagless_mlflow_images = list(
+                set(
+                    RemoteImage(name=i.name, registry=i.registry) for i in MLFLOW_IMAGES
+                )
+            )
+            prioritized = _sorted_by_mlflow_preference(
+                images=images + tagless_mlflow_images
+            )
+            return prioritized
 
     def list_triton_images(self) -> list[RemoteImage]:
         return TRITON_IMAGES
 
     async def list_image_tags(self, platform_image: RemoteImage) -> list[RemoteImage]:
         async with get() as n_client:
+            # TODO: handle non-platform images
             return list(await n_client.images.tags(platform_image))
 
     def deploy_mlflow(self, *args, **kwargs) -> None:  # type: ignore
@@ -209,6 +269,7 @@ class InferenceRunner:
         display_container.info(
             f"Deploying {model.name}:{model.stage} using MLFlow inference."
         )
+        logger.debug(f"Running job with image {image_with_tag}")
         async with get() as n_client:
             try:
                 job_descr = await n_client.jobs.start(
@@ -226,8 +287,9 @@ class InferenceRunner:
                     env={
                         "MLFLOW_TRACKING_URI": str(model.link.with_path("")),
                     },
-                    entrypoint=(
-                        "/bin/bash -c "
+                    entrypoint="/bin/bash",
+                    command=(
+                        "-c "
                         '"source /root/.bashrc && '
                         f"mlflow models serve -m models:/{model.name}/{model.stage} "
                         '--host=0.0.0.0 --port=5000"'

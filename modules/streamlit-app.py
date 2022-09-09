@@ -87,6 +87,8 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
             "Image name",
             options=inf_runner.run_coroutine(inf_runner.list_images()),
             key=str(model),
+            help="""Image should contain mlflow[extras]>=1.27.0 and conda
+            accessible on PATH in order for mlflow serve to work properly""",
         )
         image_with_tag = expander.selectbox(
             "Image tag",
