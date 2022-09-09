@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, Coroutine, List, Tuple
 
@@ -17,7 +16,7 @@ from neuro_sdk import (
     Volume,
     get,
 )
-from neuro_sdk._images import TAGS_PER_PAGE, Images
+from neuro_sdk._images import Images
 from streamlit.delta_generator import DeltaGenerator
 from yarl import URL
 
@@ -33,28 +32,16 @@ from modules.resources import (
 
 
 def patch_neuro_sdk_RemoteImage_tags() -> None:
-    async def patched_tags(self, image: RemoteImage) -> List[RemoteImage]:
+    old_tags = Images.tags
+
+    async def patched_tags(self: Images, image: RemoteImage) -> List[RemoteImage]:
         if image.owner:
-            self._validate_image_for_tags(image)
-            auth = await self._config._registry_auth()
-            url = self._get_image_url(image) / "tags" / "list"
-            result: List[RemoteImage] = []
-            while True:
-                url = url.update_query(n=str(TAGS_PER_PAGE))
-                async with self._core.request("GET", url, auth=auth) as resp:
-                    ret = await resp.json()
-                    tags = ret.get("tags", [])
-                    for tag in tags:
-                        result.append(replace(image, tag=tag))
-                    if not tags or "next" not in resp.links:
-                        break
-                    url = URL(resp.links["next"]["url"])
-            return result
+            return await old_tags(self, image)
         else:
             # TODO: get list of tags via Docker API
             return [i for i in NON_PLATFORM_IMAGES if i.name == image.name]
 
-    Images.tags = patched_tags
+    Images.tags = patched_tags  # type: ignore
 
 
 patch_neuro_sdk_RemoteImage_tags()
@@ -210,7 +197,6 @@ class InferenceRunner:
             prioritized = _sorted_by_mlflow_preference(
                 images=images + tagless_mlflow_images
             )
-            logger.info(f"Prioritized images: {prioritized}")
             return prioritized
 
     def list_triton_images(self) -> list[RemoteImage]:
