@@ -202,7 +202,6 @@ class InferenceRunner:
         async with get() as n_client:
             # return [str(im) for im in await n_client.images.list()]
             images = await n_client.images.list()
-            logger.info(f"Images: {images}")
             tagless_mlflow_images = list(
                 set(
                     RemoteImage(name=i.name, registry=i.registry) for i in MLFLOW_IMAGES
