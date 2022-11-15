@@ -1,4 +1,4 @@
-mlflow==1.27.0
+mlflow==2.0.1
 neuro-cli==22.7.1   # https://neuromation.slack.com/archives/D01BDEWAF19/p1657728488222089
 neuro-sdk==22.7.1
 streamlit==1.11.1
