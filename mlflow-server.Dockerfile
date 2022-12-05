@@ -1,4 +1,4 @@
-FROM ghcr.io/neuro-inc/base:v22.5.0-runtime
+FROM ghcr.io/neuro-inc/base:v22.12.0-runtime
 
 # Installing conda
 RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.12.0-Linux-x86_64.sh && \
