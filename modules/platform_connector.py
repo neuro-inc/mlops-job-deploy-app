@@ -21,6 +21,7 @@ from streamlit.delta_generator import DeltaGenerator
 from yarl import URL
 
 from modules.mlflow_connector import MLFlowConnector
+from modules.registry_client import RegistryV2Client
 from modules.resources import (
     DeployedModelInfo,
     InferenceServerInfo,
@@ -38,8 +39,16 @@ def patch_neuro_sdk_RemoteImage_tags() -> None:
         if image.owner:
             return await old_tags(self, image)
         else:
-            # TODO: get list of tags via Docker API
-            return [i for i in NON_PLATFORM_IMAGES if i.name == image.name]
+            img_registry = "https://" + image.name.split("/")[0]
+            img_owner = image.name.split("/")[1]
+            img_repo = "/".join(image.name.split("/")[2:])
+            reg = RegistryV2Client(base_url=URL(img_registry))
+            try:
+                res = await reg.list_repo_tags(img_owner, img_repo)
+                return res[::-1]
+            except Exception as e:
+                logger.error(f"Unable to fetch image tags for {image}: {e}")
+                return []
 
     Images.tags = patched_tags  # type: ignore
 
@@ -48,39 +57,19 @@ patch_neuro_sdk_RemoteImage_tags()
 
 logger = logging.getLogger(__name__)
 
-TRITON_IMAGES = [
-    RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.12-py3"),
-    RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.11-py3"),
-    RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.10-py3"),
-]  # TODO: we should know which driver versions are installed within the cluster
 
-MLFLOW_IMAGES = [
-    RemoteImage(name="ghcr.io/neuro-inc/mlflow", tag="v1.28.0"),
-    RemoteImage(name="ghcr.io/neuro-inc/base", tag="v22.8.0-runtime"),
-    RemoteImage(name="ghcr.io/neuro-inc/base", tag="v22.8.0-devel"),
-    RemoteImage(name="ghcr.io/neuro-inc/base", tag="latest-devel"),
-    RemoteImage(name="ghcr.io/neuro-inc/base", tag="latest-runtime"),
+GH_SUPPORTED_IMAGES = [
+    RemoteImage(name="ghcr.io/neuro-inc/mlflow"),
+    RemoteImage(name="ghcr.io/neuro-inc/base"),
 ]
-
-NON_PLATFORM_IMAGES = MLFLOW_IMAGES + TRITON_IMAGES
-
-MLFLOW_PREFERRED_IMAGES = [
-    RemoteImage(
-        name="base",
-        registry="registry.green-hgx-1.org.neu.ro",
-        owner="andriikhomiak",
-        cluster_name="green-hgx-1",
-        org_name=None,
-    ),
-] + MLFLOW_IMAGES
 
 
 def _sorted_by_mlflow_preference(images: List[RemoteImage]) -> List[RemoteImage]:
     """Sort images based on hard-coded preference first and then alphabetically"""
     preference_scores = {f"{image.registry}:{image.name}": 1 for image in images}
-    for idx, image in enumerate(MLFLOW_PREFERRED_IMAGES):
+    for idx, image in enumerate(GH_SUPPORTED_IMAGES):
         preference_scores[f"{image.registry}:{image.name}"] = (
-            -len(MLFLOW_PREFERRED_IMAGES) + idx
+            -len(GH_SUPPORTED_IMAGES) + idx
         )
 
     def sort_by_priority_and_name_asc(image: RemoteImage) -> Tuple[float, str]:
@@ -93,6 +82,8 @@ class InferenceRunner:
     def __init__(self, mlflow_connector: MLFlowConnector) -> None:
         self._client: Client | None = None
         self._mlflow_connector = mlflow_connector
+        self._gh_registry_client = RegistryV2Client()
+        self._nv_registry_client = RegistryV2Client(base_url=URL("https://nvcr.io/"))
 
     def get_server_tags(
         self,
@@ -187,20 +178,14 @@ class InferenceRunner:
 
     async def list_images(self) -> list[RemoteImage]:
         async with get() as n_client:
-            # return [str(im) for im in await n_client.images.list()]
-            images = await n_client.images.list()
-            tagless_mlflow_images = list(
-                set(
-                    RemoteImage(name=i.name, registry=i.registry) for i in MLFLOW_IMAGES
-                )
-            )
+            platform_images = await n_client.images.list()
             prioritized = _sorted_by_mlflow_preference(
-                images=images + tagless_mlflow_images
+                images=platform_images + GH_SUPPORTED_IMAGES
             )
             return prioritized
 
-    def list_triton_images(self) -> list[RemoteImage]:
-        return TRITON_IMAGES
+    async def list_triton_images(self) -> list[RemoteImage]:
+        return await self._nv_registry_client.list_repo_tags("nvidia", "tritonserver")
 
     async def list_image_tags(self, platform_image: RemoteImage) -> list[RemoteImage]:
         async with get() as n_client:
@@ -222,7 +207,6 @@ class InferenceRunner:
         image_with_tag: RemoteImage | None = None,
         enable_auth: bool | None = None,
     ) -> None:
-
         if create_server:
             assert server_name
             assert preset_name

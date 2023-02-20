@@ -136,7 +136,8 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
                 key=str(model),
             )
             image_with_tag = expander.selectbox(
-                "Image name", options=inf_runner.list_triton_images()
+                "Image name",
+                options=inf_runner.run_coroutine(inf_runner.list_triton_images()),
             )
             enable_auth = expander.radio(
                 "Force platform Auth", options=[True, False], key=str(model)
