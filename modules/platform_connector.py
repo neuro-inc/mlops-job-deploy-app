@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
-from typing import Any, Coroutine, List, Tuple
+from typing import Any, Coroutine
 
 from neuro_sdk import (
     Client,
@@ -16,11 +17,11 @@ from neuro_sdk import (
     Volume,
     get,
 )
-from neuro_sdk._images import Images
 from streamlit.delta_generator import DeltaGenerator
 from yarl import URL
 
 from modules.mlflow_connector import MLFlowConnector
+from modules.registry_client import RegistryV2Client
 from modules.resources import (
     DeployedModelInfo,
     InferenceServerInfo,
@@ -31,62 +32,18 @@ from modules.resources import (
 )
 
 
-def patch_neuro_sdk_RemoteImage_tags() -> None:
-    old_tags = Images.tags
-
-    async def patched_tags(self: Images, image: RemoteImage) -> List[RemoteImage]:
-        if image.owner:
-            return await old_tags(self, image)
-        else:
-            # TODO: get list of tags via Docker API
-            return [i for i in NON_PLATFORM_IMAGES if i.name == image.name]
-
-    Images.tags = patched_tags  # type: ignore
-
-
-patch_neuro_sdk_RemoteImage_tags()
-
 logger = logging.getLogger(__name__)
 
-TRITON_IMAGES = [
-    RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.12-py3"),
-    RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.11-py3"),
-    RemoteImage.new_external_image("nvcr.io/nvidia/tritonserver", tag="21.10-py3"),
-]  # TODO: we should know which driver versions are installed within the cluster
 
-MLFLOW_IMAGES = [
-    RemoteImage(name="ghcr.io/neuro-inc/mlflow", tag="v1.28.0"),
-    RemoteImage(name="ghcr.io/neuro-inc/base", tag="v22.8.0-runtime"),
-    RemoteImage(name="ghcr.io/neuro-inc/base", tag="v22.8.0-devel"),
-    RemoteImage(name="ghcr.io/neuro-inc/base", tag="latest-devel"),
-    RemoteImage(name="ghcr.io/neuro-inc/base", tag="latest-runtime"),
+GH_SUPPORTED_IMAGES = [
+    RemoteImage(name="ghcr.io/neuro-inc/mlflow"),
+    RemoteImage(name="ghcr.io/neuro-inc/base"),
 ]
 
-NON_PLATFORM_IMAGES = MLFLOW_IMAGES + TRITON_IMAGES
 
-MLFLOW_PREFERRED_IMAGES = [
-    RemoteImage(
-        name="base",
-        registry="registry.green-hgx-1.org.neu.ro",
-        owner="andriikhomiak",
-        cluster_name="green-hgx-1",
-        org_name=None,
-    ),
-] + MLFLOW_IMAGES
-
-
-def _sorted_by_mlflow_preference(images: List[RemoteImage]) -> List[RemoteImage]:
-    """Sort images based on hard-coded preference first and then alphabetically"""
-    preference_scores = {f"{image.registry}:{image.name}": 1 for image in images}
-    for idx, image in enumerate(MLFLOW_PREFERRED_IMAGES):
-        preference_scores[f"{image.registry}:{image.name}"] = (
-            -len(MLFLOW_PREFERRED_IMAGES) + idx
-        )
-
-    def sort_by_priority_and_name_asc(image: RemoteImage) -> Tuple[float, str]:
-        return preference_scores[f"{image.registry}:{image.name}"], str(image)
-
-    return sorted(images, key=sort_by_priority_and_name_asc)
+NVCR_SUPPORTED_IMAGES = [
+    RemoteImage(name="nvcr.io/nvidia/tritonserver"),
+]
 
 
 class InferenceRunner:
@@ -185,27 +142,63 @@ class InferenceRunner:
         async with get() as n_client:
             return list(n_client.config.presets.keys())
 
-    async def list_images(self) -> list[RemoteImage]:
-        async with get() as n_client:
-            # return [str(im) for im in await n_client.images.list()]
-            images = await n_client.images.list()
-            tagless_mlflow_images = list(
-                set(
-                    RemoteImage(name=i.name, registry=i.registry) for i in MLFLOW_IMAGES
-                )
-            )
-            prioritized = _sorted_by_mlflow_preference(
-                images=images + tagless_mlflow_images
-            )
-            return prioritized
+    async def list_images(
+        self,
+        triton: bool = False,
+        github: bool = False,
+        platform: bool = False,
+    ) -> list[RemoteImage]:
+        tasks = []
+        if triton:
+            tasks.append(asyncio.create_task(self._list_triton_images()))
+        if github:
+            tasks.append(asyncio.create_task(self._list_gh_images()))
+        if platform:
+            tasks.append(asyncio.create_task(self._list_platform_images()))
+        results = []
+        for res in await asyncio.gather(*tasks):
+            results.extend(res)
+        return results
 
-    def list_triton_images(self) -> list[RemoteImage]:
-        return TRITON_IMAGES
+    async def _list_gh_images(self) -> list[RemoteImage]:
+        return GH_SUPPORTED_IMAGES
 
-    async def list_image_tags(self, platform_image: RemoteImage) -> list[RemoteImage]:
+    async def _list_triton_images(self) -> list[RemoteImage]:
+        return NVCR_SUPPORTED_IMAGES
+
+    async def _list_platform_images(self) -> list[RemoteImage]:
         async with get() as n_client:
-            # TODO: handle non-platform images
-            return list(await n_client.images.tags(platform_image))
+            platform_images = await n_client.images.list()
+
+            def _sort_owner_alphabet_key(img: RemoteImage) -> str:
+                res = ""
+                if img.owner and img.owner == n_client.username:
+                    res += "!"
+                res += img.registry or "" + img.name or ""
+                return res
+
+            return sorted(platform_images, key=_sort_owner_alphabet_key)
+
+    async def list_image_tags(self, image: RemoteImage) -> list[RemoteImage]:
+        if image._is_in_neuro_registry:
+            async with get() as n_client:
+                return list(await n_client.images.tags(image))
+        else:
+            reg, own, *repo = image.name.split("/")
+            reg_cl = RegistryV2Client(base_url=URL("https://" + reg))
+            try:
+                imgs_with_tags = await reg_cl.list_repo_tags(own, "/".join(repo))
+                imgs_with_tags = imgs_with_tags[::-1]  # From older to newer
+                if image in NVCR_SUPPORTED_IMAGES:
+                    reg = r"\d{1,2}\.\d{1,2}-py3"
+                    # Leave only those with ONNX backend
+                    imgs_with_tags = list(
+                        filter(lambda x: re.fullmatch(reg, x.tag or ""), imgs_with_tags)
+                    )
+                return imgs_with_tags
+            except Exception as e:
+                logger.error(f"Unable to fetch image tags for {image}: {e}")
+                return []
 
     def deploy_mlflow(self, *args, **kwargs) -> None:  # type: ignore
         return self.run_coroutine(self._deploy_mlflow(*args, **kwargs))
@@ -222,7 +215,6 @@ class InferenceRunner:
         image_with_tag: RemoteImage | None = None,
         enable_auth: bool | None = None,
     ) -> None:
-
         if create_server:
             assert server_name
             assert preset_name
@@ -254,6 +246,12 @@ class InferenceRunner:
                     triton_server_config=server_config,
                 )
                 display_container.success(f"Model deployed!")
+            except TypeError as e:
+                if "join() argument must be str, bytes," in e.args[0]:
+                    display_container.error(
+                        f"Could only deploy Triton or ONNX model "
+                        "to Triton inference server. Verify model flawors."
+                    )
             except Exception as e:
                 display_container.error(f"Unable to deploy model: {e}")
 
