@@ -50,8 +50,6 @@ class InferenceRunner:
     def __init__(self, mlflow_connector: MLFlowConnector) -> None:
         self._client: Client | None = None
         self._mlflow_connector = mlflow_connector
-        self._gh_registry_client = RegistryV2Client()
-        self._nv_registry_client = RegistryV2Client(base_url=URL("https://nvcr.io/"))
 
     def get_server_tags(
         self,
@@ -317,7 +315,7 @@ class InferenceRunner:
         image_with_tag: RemoteImage,
         enable_auth: bool,
         display_container: DeltaGenerator,
-        port: int = 9000,
+        port: int = 8000,
     ) -> TritonServerInfo | None:
         async with get() as n_client:
             model_repo_storage = URL(os.environ["TRITON_MODEL_REPO_STORAGE"])
