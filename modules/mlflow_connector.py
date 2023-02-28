@@ -18,7 +18,7 @@ class MLFlowConnector:
         self._mlflow_uri = os.environ["MLFLOW_TRACKING_URI"]
 
     def get_registered_models(self) -> list[ModelStage]:
-        registered_models = self.client.list_registered_models()
+        registered_models = self.client.search_registered_models()
         result = []
         for model in registered_models:
             model_versions = self.client.get_latest_versions(

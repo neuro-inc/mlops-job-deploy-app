@@ -78,8 +78,8 @@ class InferenceServerInfo:
 
     def __eq__(self, other: object) -> bool:
         return (
-            issubclass(type(other), type(self))
-            and self.job_description.id == other.job_description.id  # type: ignore
+            isinstance(other, InferenceServerInfo)
+            and self.job_description.id == other.job_description.id
         )
 
     @property
@@ -150,6 +150,10 @@ class TritonServerInfo(InferenceServerInfo):
         )
         assert result
         return result
+
+    @property
+    def public_hostname(self) -> str:
+        return str(self.job_description.http_url)
 
     @property
     def model_repository_path(self) -> Path:

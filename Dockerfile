@@ -5,7 +5,7 @@ LABEL org.opencontainers.image.source = "https://github.com/neuro-inc/mlops-in-j
 COPY requirements/python.txt /tmp/python.txt
 RUN pip install --progress-bar=off -U --no-cache-dir -r /tmp/python.txt && \
     # Installing MLFlow Triton plugin
-    git clone --depth=1 --branch v2.23.0 https://github.com/triton-inference-server/server /tmp/triton_server && \
+    git clone --depth=1 --branch v2.27.0 https://github.com/triton-inference-server/server /tmp/triton_server && \
     cd /tmp/triton_server/deploy/mlflow-triton-plugin && \
     python setup.py install && \
     rm -rf /tmp/triton_server /tmp/python.txt
