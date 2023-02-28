@@ -83,16 +83,18 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
             options=inf_runner.run_coroutine(inf_runner.list_preset_names()),
             key=str(model),
         )
-        platform_image = expander.selectbox(
+        image_name = expander.selectbox(
             "Image name",
-            options=inf_runner.run_coroutine(inf_runner.list_images()),
+            options=inf_runner.run_coroutine(
+                inf_runner.list_images(github=True, platform=True)
+            ),
             key=str(model),
+            help="""Image should contain mlflow[extras]>=1.27.0 and conda
+            accessible on PATH in order for mlflow serve to work properly""",
         )
         image_with_tag = expander.selectbox(
             "Image tag",
-            options=inf_runner.run_coroutine(
-                inf_runner.list_image_tags(platform_image)
-            ),
+            options=inf_runner.run_coroutine(inf_runner.list_image_tags(image_name)),
             key=str(model),
             format_func=lambda x: x.tag,
         )
@@ -117,6 +119,10 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
         )
 
     elif server_type == InferenceServerType.TRITON:
+        expander.caption(
+            "Note: your model should be saved with ONNX inference flawor. "
+            "We can not verify this automatically yet."
+        )
         create_server = expander.radio(
             "Create new server instance", options=[False, True], horizontal=True
         )
@@ -133,8 +139,20 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
                 options=inf_runner.run_coroutine(inf_runner.list_preset_names()),
                 key=str(model),
             )
+            image_name = expander.selectbox(
+                "Image name",
+                options=inf_runner.run_coroutine(
+                    inf_runner.list_images(triton=True, platform=True)
+                ),
+                help="Image with Triton server should contain ONNX inference backend",
+            )
             image_with_tag = expander.selectbox(
-                "Image name", options=inf_runner.list_triton_images()
+                "Image tag",
+                options=inf_runner.run_coroutine(
+                    inf_runner.list_image_tags(image_name)
+                ),
+                key=str(model),
+                format_func=lambda x: x.tag,
             )
             enable_auth = expander.radio(
                 "Force platform Auth", options=[True, False], key=str(model)
