@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Coroutine
 
-from neuro_sdk import (
+from apolo_sdk import (
     Client,
     HTTPPort,
     IllegalArgumentError,
@@ -169,18 +169,10 @@ class InferenceRunner:
     async def _list_platform_images(self) -> list[RemoteImage]:
         async with get() as n_client:
             platform_images = await n_client.images.list()
-
-            def _sort_owner_alphabet_key(img: RemoteImage) -> str:
-                res = ""
-                if img.owner and img.owner == n_client.username:
-                    res += "!"
-                res += img.registry or "" + img.name or ""
-                return res
-
-            return sorted(platform_images, key=_sort_owner_alphabet_key)
+            return platform_images
 
     async def list_image_tags(self, image: RemoteImage) -> list[RemoteImage]:
-        if image._is_in_neuro_registry:
+        if image._is_in_apolo_registry:
             async with get() as n_client:
                 return list(await n_client.images.tags(image))
         else:
@@ -275,13 +267,6 @@ class InferenceRunner:
                     preset_name=preset_name,
                     shm=True,
                     name=deployment_name,
-                    secret_env={
-                        # TODO: we should generate
-                        #  a dedicated access token via service accounts
-                        "MLFLOW_TRACKING_TOKEN": URL(
-                            "secret:in-job-deployment-auth-token"
-                        ),
-                    },
                     env={
                         "MLFLOW_TRACKING_URI": str(model.link.with_path("")),
                     },
@@ -289,8 +274,8 @@ class InferenceRunner:
                     command=(
                         "-c "
                         '"source /root/.bashrc && '
-                        f"mlflow models serve -m models:/{model.name}/{model.stage} "
-                        '--host=0.0.0.0 --port=5000"'
+                        f"mlflow models serve -m models:/{model.name}/{(model.stage).lower()} "
+                        '--host=0.0.0.0 --port=5000 --env-manager conda"'
                     ),
                     # restart_policy=JobRestartPolicy.ON_FAILURE,
                     http=HTTPPort(5000, requires_auth=enable_auth),

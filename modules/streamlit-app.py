@@ -9,7 +9,6 @@ from modules.platform_connector import InferenceRunner, InferenceServerType
 from modules.resources import DeployedModelInfo, InferenceServerInfo, ModelStage
 from modules.version import __version__ as app_ver
 
-
 # general configuration
 st.set_page_config(
     page_title="Neuro MLFlow model deployments",
@@ -49,6 +48,7 @@ with col5:
     col5.caption("Deployment")
 
 
+
 def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
     expander: DeltaGenerator = column.expander("Create new deployment")
 
@@ -56,7 +56,7 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
         "Deployment name",
         value=f"{model.name}-{model.stage}".lower().replace("/", "-").replace("_", "-"),
         max_chars=40,
-        key=str(model),
+        # key=str(model),
         help=(
             "Deployment name will be embedded to the resulting model URL. \n"
             "The name can only contain lowercase letters, numbers"
@@ -70,7 +70,7 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
         expander.selectbox(
             "Server type",
             options=[x.value for x in InferenceServerType],
-            key=str(model),
+            key="Server type:"+str(model),
         )
     )
     preset_name: str | None = None
@@ -81,32 +81,32 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
         preset_name = expander.selectbox(
             "Preset",
             options=inf_runner.run_coroutine(inf_runner.list_preset_names()),
-            key=str(model),
+            # key=str(model),
         )
         image_name = expander.selectbox(
             "Image name",
             options=inf_runner.run_coroutine(
                 inf_runner.list_images(github=True, platform=True)
             ),
-            key=str(model),
+            # key=str(model),
             help="""Image should contain mlflow[extras]>=1.27.0 and conda
             accessible on PATH in order for mlflow serve to work properly""",
         )
         image_with_tag = expander.selectbox(
             "Image tag",
             options=inf_runner.run_coroutine(inf_runner.list_image_tags(image_name)),
-            key=str(model),
+            # key=str(model),
             format_func=lambda x: x.tag,
         )
         enable_auth = expander.radio(
             "Force platform Auth",
             options=[True, False],
             horizontal=True,
-            key=str(model),
+            # key=str(model),
         )
         expander.button(
             "Deploy",
-            key=str(model),
+            # key=str(model),
             on_click=inf_runner.deploy_mlflow,
             kwargs={
                 "model": model,
@@ -137,7 +137,7 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
             preset_name = expander.selectbox(
                 "Preset",
                 options=inf_runner.run_coroutine(inf_runner.list_preset_names()),
-                key=str(model),
+                # key=str(model),
             )
             image_name = expander.selectbox(
                 "Image name",
@@ -151,11 +151,11 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
                 options=inf_runner.run_coroutine(
                     inf_runner.list_image_tags(image_name)
                 ),
-                key=str(model),
+                # key=str(model),
                 format_func=lambda x: x.tag,
             )
             enable_auth = expander.radio(
-                "Force platform Auth", options=[True, False], key=str(model)
+                "Force platform Auth", options=[True, False], # key=str(model)
             )
         else:
             triton_servers = [
@@ -193,7 +193,7 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
 
         expander.button(
             "Deploy",
-            key=str(model),
+            # key=str(model),
             on_click=inf_runner.deploy_triton,
             kwargs={
                 "display_container": expander,
@@ -215,7 +215,7 @@ for model in models:
         col1.write(
             ""
         )  # https://github.com/streamlit/streamlit/issues/3052#issuecomment-1083620133
-        col1.write(f"[{model.name}]({model.link})")
+        col1.write(f"[{model.name}]({model.public_link})")
         col1.write("")
     with col2:
         col2.write("")

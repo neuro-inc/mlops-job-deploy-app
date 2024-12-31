@@ -16,6 +16,7 @@ class MLFlowConnector:
     def __init__(self) -> None:
         self.client = MlflowClient()  # URI and token are passed via env vars
         self._mlflow_uri = os.environ["MLFLOW_TRACKING_URI"]
+        self._public_mlflow_uri = os.environ.get("MLFLOW_PUBLIC_URI", self._mlflow_uri)
 
     def get_registered_models(self) -> list[ModelStage]:
         registered_models = self.client.search_registered_models()
@@ -35,6 +36,10 @@ class MLFlowConnector:
                     ),
                     link=URL(
                         f"{self.client._tracking_client.tracking_uri}"
+                        f"/#/models/{model.name}/versions/{model_version.version}"
+                    ),
+                    public_link=URL(
+                        f"{self._public_mlflow_uri}"
                         f"/#/models/{model.name}/versions/{model_version.version}"
                     ),
                     uri=URL(f"models:/{model.name}/{model_version.current_stage}"),

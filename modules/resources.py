@@ -17,7 +17,8 @@ class ModelStage:
     stage: str
     creation_datetime: dt.datetime
     uri: URL  # models:/<model-name>/<model-stage>
-    link: URL  # https://<mlflow-endpoint>/#/models/<model-name>/versions/<version>
+    link: URL  # https://<apolo-cluster-mlflow-endpoint>/#/models/<model-name>/versions/<version>
+    public_link: URL # https://<mlflow-endpoint>/#/models/<model-name>/versions/<version>
 
 
 @dataclass
