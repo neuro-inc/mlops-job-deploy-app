@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import aiohttp
-from neuro_sdk import RemoteImage
+from apolo_sdk import RemoteImage
 from yarl import URL
 
 

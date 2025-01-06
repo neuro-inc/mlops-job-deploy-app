@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from typing import Any
+
 import streamlit as st
-from neuro_sdk import RemoteImage
+from apolo_sdk import RemoteImage
 from streamlit.delta_generator import DeltaGenerator
 
 from modules.mlflow_connector import MLFlowConnector
 from modules.platform_connector import InferenceRunner, InferenceServerType
 from modules.resources import DeployedModelInfo, InferenceServerInfo, ModelStage
 from modules.version import __version__ as app_ver
+
 
 # general configuration
 st.set_page_config(
@@ -26,7 +29,10 @@ st.set_page_config(
 st.header("In-job model deployments")
 
 # Communication
-mlflow_conn = MLFlowConnector()
+if "mlflow_connector" not in st.session_state:
+    print("Not in session state")
+    st.session_state["mlflow_connector"] = MLFlowConnector()
+mlflow_conn = st.session_state["mlflow_connector"]
 inf_runner = InferenceRunner(
     mlflow_connector=mlflow_conn,
 )
@@ -48,7 +54,6 @@ with col5:
     col5.caption("Deployment")
 
 
-
 def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
     expander: DeltaGenerator = column.expander("Create new deployment")
 
@@ -56,7 +61,7 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
         "Deployment name",
         value=f"{model.name}-{model.stage}".lower().replace("/", "-").replace("_", "-"),
         max_chars=40,
-        # key=str(model),
+        key="Deployment name:" + str(model),
         help=(
             "Deployment name will be embedded to the resulting model URL. \n"
             "The name can only contain lowercase letters, numbers"
@@ -69,8 +74,12 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
     server_type = InferenceServerType(
         expander.selectbox(
             "Server type",
-            options=[x.value for x in InferenceServerType],
-            key="Server type:"+str(model),
+            options=[
+                x.value
+                for x in InferenceServerType
+                if x == InferenceServerType.MLFLOW or model.supports_triton()
+            ],
+            key="Server type:" + str(model),
         )
     )
     preset_name: str | None = None
@@ -81,32 +90,32 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
         preset_name = expander.selectbox(
             "Preset",
             options=inf_runner.run_coroutine(inf_runner.list_preset_names()),
-            # key=str(model),
+            key="Preset:" + str(model),
         )
-        image_name = expander.selectbox(
+        image_name: Any = expander.selectbox(
             "Image name",
             options=inf_runner.run_coroutine(
                 inf_runner.list_images(github=True, platform=True)
             ),
-            # key=str(model),
+            key="Image name:" + str(model),
             help="""Image should contain mlflow[extras]>=1.27.0 and conda
             accessible on PATH in order for mlflow serve to work properly""",
         )
         image_with_tag = expander.selectbox(
             "Image tag",
             options=inf_runner.run_coroutine(inf_runner.list_image_tags(image_name)),
-            # key=str(model),
+            key="Image tag:" + str(model),
             format_func=lambda x: x.tag,
         )
         enable_auth = expander.radio(
             "Force platform Auth",
             options=[True, False],
             horizontal=True,
-            # key=str(model),
+            key="Force platform Auth:" + str(model),
         )
         expander.button(
             "Deploy",
-            # key=str(model),
+            key="Deploy:" + str(model),
             on_click=inf_runner.deploy_mlflow,
             kwargs={
                 "model": model,
@@ -137,7 +146,7 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
             preset_name = expander.selectbox(
                 "Preset",
                 options=inf_runner.run_coroutine(inf_runner.list_preset_names()),
-                # key=str(model),
+                key="Preset:" + str(model),
             )
             image_name = expander.selectbox(
                 "Image name",
@@ -145,17 +154,19 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
                     inf_runner.list_images(triton=True, platform=True)
                 ),
                 help="Image with Triton server should contain ONNX inference backend",
+                key="Image name:" + str(model),
             )
             image_with_tag = expander.selectbox(
                 "Image tag",
                 options=inf_runner.run_coroutine(
                     inf_runner.list_image_tags(image_name)
                 ),
-                # key=str(model),
+                key="Image tag:" + str(model),
                 format_func=lambda x: x.tag,
             )
             enable_auth = expander.radio(
-                "Force platform Auth", options=[True, False], # key=str(model)
+                "Force platform Auth",
+                options=[True, False],  # key=str(model)
             )
         else:
             triton_servers = [
@@ -193,7 +204,7 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
 
         expander.button(
             "Deploy",
-            # key=str(model),
+            key="Deploy:" + str(model),
             on_click=inf_runner.deploy_triton,
             kwargs={
                 "display_container": expander,

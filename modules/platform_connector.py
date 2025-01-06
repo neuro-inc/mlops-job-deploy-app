@@ -231,10 +231,13 @@ class InferenceRunner:
         else:
             try:
                 display_container.info(f"Deploying {model.uri}")
+                flavor = "onnx"
+                if "triton" in model.mlmodel_definition["flavors"]:  # type: ignore
+                    flavor = "triton"
                 self._mlflow_connector.deploy_triton(
                     model=model,
                     deployment_name=deployment_name,
-                    flavor="onnx",
+                    flavor=flavor,
                     triton_server_config=server_config,
                 )
                 display_container.success(f"Model deployed!")
@@ -262,6 +265,7 @@ class InferenceRunner:
         logger.debug(f"Running job with image {image_with_tag}")
         async with get() as n_client:
             try:
+                stage = (model.stage).lower()
                 job_descr = await n_client.jobs.start(
                     image=image_with_tag,
                     preset_name=preset_name,
@@ -274,7 +278,7 @@ class InferenceRunner:
                     command=(
                         "-c "
                         '"source /root/.bashrc && '
-                        f"mlflow models serve -m models:/{model.name}/{(model.stage).lower()} "
+                        f"mlflow models serve -m models:/{model.name}/{stage} "
                         '--host=0.0.0.0 --port=5000 --env-manager conda"'
                     ),
                     # restart_policy=JobRestartPolicy.ON_FAILURE,

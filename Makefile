@@ -32,6 +32,7 @@ setup:
 
 .PHONY: lint
 lint: format
+	python3 -m pip install types-PyYAML
 	mypy modules
 
 .PHONY: format
