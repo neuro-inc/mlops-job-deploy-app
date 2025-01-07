@@ -16,7 +16,7 @@ jobs:
     if: |
       (github.event_name != 'pull_request_target' && github.actor != 'dependabot[bot]') ||
       (github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]')
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -25,12 +25,12 @@ jobs:
     - name: Setup Python 3.8
       uses: actions/setup-python@v4
       with:
-        python-version: 3.8
+        python-version: 3.11.11
     - name: Cache pre-commit hooks
       uses: actions/cache@v3
       with:
         path: ~/.cache/pre-commit
-        key: pre-commit|py3.8|${{ hashFiles('.pre-commit-config.yaml') }}
+        key: pre-commit|py3.11|${{ hashFiles('.pre-commit-config.yaml') }}
     - name: Cache PyPI
       uses: actions/cache@v3
       with:

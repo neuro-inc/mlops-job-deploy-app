@@ -5,8 +5,9 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any, Dict
 
-from neuro_sdk import JobDescription
+from apolo_sdk import JobDescription
 from yarl import URL
 
 
@@ -17,7 +18,28 @@ class ModelStage:
     stage: str
     creation_datetime: dt.datetime
     uri: URL  # models:/<model-name>/<model-stage>
-    link: URL  # https://<mlflow-endpoint>/#/models/<model-name>/versions/<version>
+    link: URL  # https://<apolo-cluster-mlflow-endpoint>/#/models/<model-name>/versions/<version> # noqa E501
+    public_link: URL  # https://<mlflow-endpoint>/#/models/<model-name>/versions/<version> # noqa E501
+    source: str | None = None
+    mlmodel_definition: Dict[
+        str, Any
+    ] | None = None  # https://mlflow.org/docs/latest/models.html#mlmodel-file
+
+    def supports_triton(self) -> bool:
+        if not self.mlmodel_definition:
+            return False
+        flavors = self.mlmodel_definition.get("flavors", {})
+        return "onnx" in flavors or "triton" in flavors
+
+    def get_triton_flavor(self) -> str:
+        if not self.mlmodel_definition:
+            raise ValueError("Model definition is not available")
+        flavors = self.mlmodel_definition.get("flavors", {})
+        if "onnx" in flavors:
+            return "onnx"
+        if "triton" in flavors:
+            return "triton"
+        raise ValueError("Model does not support Triton")
 
 
 @dataclass
