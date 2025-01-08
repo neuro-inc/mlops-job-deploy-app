@@ -32,7 +32,7 @@ st.header("In-job model deployments")
 if "mlflow_connector" not in st.session_state:
     print("Not in session state")
     st.session_state["mlflow_connector"] = MLFlowConnector()
-mlflow_conn = st.session_state["mlflow_connector"]
+mlflow_conn = st.session_state["mlflow_connector"]  # MLFlowConnector()
 inf_runner = InferenceRunner(
     mlflow_connector=mlflow_conn,
 )
@@ -52,6 +52,22 @@ with col4:
     col4.caption("Creation date")
 with col5:
     col5.caption("Deployment")
+
+# preloading options
+if "image_list_mlflow" not in st.session_state:
+    st.session_state["image_list_mlflow"] = inf_runner.run_coroutine(
+        inf_runner.list_images(github=True, platform=True)
+    )
+if "image_list_triton" not in st.session_state:
+    st.session_state["image_list_triton"] = inf_runner.run_coroutine(
+        inf_runner.list_images(triton=True, platform=True)
+    )
+if "image_tags" not in st.session_state:
+    st.session_state["image_tags"] = {}
+if "presets" not in st.session_state:
+    st.session_state["presets"] = inf_runner.run_coroutine(
+        inf_runner.list_preset_names()
+    )
 
 
 def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
@@ -94,16 +110,17 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
         )
         image_name: Any = expander.selectbox(
             "Image name",
-            options=inf_runner.run_coroutine(
-                inf_runner.list_images(github=True, platform=True)
-            ),
+            options=st.session_state["image_list_mlflow"],
             key="Image name:" + str(model),
             help="""Image should contain mlflow[extras]>=1.27.0 and conda
             accessible on PATH in order for mlflow serve to work properly""",
         )
+        if not (image_tag := st.session_state["image_tags"].get(image_name)):
+            image_tag = inf_runner.run_coroutine(inf_runner.list_image_tags(image_name))
+            st.session_state["image_tags"]["image_name"] = image_tag
         image_with_tag = expander.selectbox(
             "Image tag",
-            options=inf_runner.run_coroutine(inf_runner.list_image_tags(image_name)),
+            options=image_tag,
             key="Image tag:" + str(model),
             format_func=lambda x: x.tag,
         )
@@ -145,22 +162,22 @@ def deployment_column_entity(model: ModelStage, column: DeltaGenerator) -> None:
             )
             preset_name = expander.selectbox(
                 "Preset",
-                options=inf_runner.run_coroutine(inf_runner.list_preset_names()),
+                options=st.session_state["presets"],
                 key="Preset:" + str(model),
             )
             image_name = expander.selectbox(
                 "Image name",
-                options=inf_runner.run_coroutine(
-                    inf_runner.list_images(triton=True, platform=True)
-                ),
+                options=st.session_state["image_list_triton"],
                 help="Image with Triton server should contain ONNX inference backend",
-                key="Image name:" + str(model),
             )
+            if not (image_tag := st.session_state["image_tags"].get(image_name)):
+                image_tag = inf_runner.run_coroutine(
+                    inf_runner.list_image_tags(image_name)
+                )
+                st.session_state["image_tags"]["image_name"] = image_tag
             image_with_tag = expander.selectbox(
                 "Image tag",
-                options=inf_runner.run_coroutine(
-                    inf_runner.list_image_tags(image_name)
-                ),
+                options=image_tag,
                 key="Image tag:" + str(model),
                 format_func=lambda x: x.tag,
             )

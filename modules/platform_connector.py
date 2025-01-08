@@ -17,6 +17,7 @@ from apolo_sdk import (
     Volume,
     get,
 )
+from requests import ConnectionError, request
 from streamlit.delta_generator import DeltaGenerator
 from yarl import URL
 
@@ -168,7 +169,7 @@ class InferenceRunner:
 
     async def _list_platform_images(self) -> list[RemoteImage]:
         async with get() as n_client:
-            platform_images = await n_client.images.list()
+            platform_images = await n_client.images.list(n_client.cluster_name)
             return platform_images
 
     async def list_image_tags(self, image: RemoteImage) -> list[RemoteImage]:
@@ -343,9 +344,36 @@ class InferenceRunner:
                     job_descr = await n_client.jobs.status(job_descr.id)
                     await asyncio.sleep(0.1)
                 display_container.success(f"Started a job {job_descr.id}")
+                display_container.info(f"Checking Triton Server health")
+                triton_status = await self.check_triton_server_health(job_descr)
+                if not triton_status:
+                    display_container.error("Triton server is not ready")
+                    return None
+                display_container.success(f"Triton server is ready")
 
                 server_config = TritonServerInfo(job_descr)
                 return server_config
+
+    async def check_triton_server_health(self, job_descr: JobDescription) -> bool:
+        triton_url = URL(str(job_descr.internal_hostname_named))
+        port = int(str((job_descr.container.http or HTTPPort(8000)).port))
+        if not triton_url.is_absolute():
+            triton_url = URL.build(scheme="http", host=str(triton_url), port=port)
+        else:
+            triton_url = triton_url.with_port(port)
+        health_check_url = triton_url / "v2/health/ready"
+        triton_status = False
+        status_counter = 0
+        while triton_status is False and status_counter < 10:
+            try:
+                req = request("GET", str(health_check_url))
+                triton_status = req.status_code == 200
+            except ConnectionError as e:
+                logger.error(f"Error connecting to Triton server {e}")
+            if not triton_status:
+                await asyncio.sleep(10)
+                status_counter += 1
+        return triton_status
 
     def run_coroutine(self, coro: Coroutine[Any, Any, Any]) -> Any:
         return asyncio.run(coro)
