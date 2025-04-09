@@ -1,4 +1,4 @@
-FROM python:3.11.11-bullseye
+FROM python:3.13.3-bullseye
 
 LABEL org.opencontainers.image.source = "https://github.com/neuro-inc/mlops-in-job-deployments"
 
