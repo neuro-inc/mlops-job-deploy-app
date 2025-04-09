@@ -1,5 +1,5 @@
 apolo-cli==24.12.3
 apolo-sdk==24.12.3
 mlflow==2.20.3
-streamlit==1.41.1
+streamlit==1.44.1
 tritonclient[http]
