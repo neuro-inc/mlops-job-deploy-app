@@ -5,7 +5,25 @@ volumes:
   triton_model_repo:
     remote: storage:${{ project.id }}/triton_model_repo
     mount: /tmp/triton_model_repo
-
+  data:
+    remote: "storage:"
+    mount: /project/data
+  code:
+    remote: "storage:"
+    mount: /project/modules
+  config:
+    remote: "storage:"
+    mount: /project/config
+  notebooks:
+    remote: "storage:${{ project.id }}/examples"
+    mount: /project/notebooks
+    local: examples
+  results:
+    remote: "storage:"
+    mount: /project/results
+  project:
+    remote: "storage:"
+    mount: /project
 images:
   app:
     ref: $[[ fmt("image:{}:{}", project.id, git.sha) ]]
@@ -40,3 +58,12 @@ jobs:
     args:
       volume_remote: ${{ volumes.triton_model_repo.remote }}
       job_lifespan: 30d
+
+  code_examples:
+    action: gh:neuro-actions/jupyter@master
+    args:
+      volumes_data_remote: ${{ volumes.data.remote }}
+      volumes_code_remote: ${{ volumes.code.remote }}
+      volumes_config_remote: ${{ volumes.config.remote }}
+      volumes_notebooks_remote: ${{ volumes.notebooks.remote }}
+      volumes_results_remote: ${{ volumes.results.remote }}

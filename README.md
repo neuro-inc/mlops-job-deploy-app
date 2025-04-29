@@ -12,6 +12,12 @@ If you want to run this application by your own, clone this repo and:
 2. Run application:
     - `neuro-flow run app`
 
+## Examples
+To run examples of model export, deployment and inference run the provided example Jupyter Notebook:
+```
+$ neuro-flow upload examples && neuro-flow run code_examples
+```
+
 ## TODOs:
 - Expose proper Triton model endpoint URIs
 - Add ability to remove model deployments
