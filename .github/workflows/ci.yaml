@@ -39,7 +39,7 @@ jobs:
         restore-keys: |
           pip-lint-
     - name: Install dependencies
-      uses: py-actions/py-dependency-install@v3
+      uses: py-actions/py-dependency-install@v4
       with:
         path: requirements/python-test.txt
     - name: Run linters
